@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -20,17 +21,22 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Toast;
 
+import com.itextpdf.text.BadElementException;
 import com.itextpdf.text.Document;
 import com.itextpdf.text.DocumentException;
+import com.itextpdf.text.Image;
 import com.itextpdf.text.Paragraph;
 import com.itextpdf.text.pdf.PdfWriter;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.MalformedURLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -47,6 +53,8 @@ public class SelfNoteFragment extends Fragment {
     private EditText mBodyEditText;
     private Button mSaveButton;
     private File myFile;
+    private View mRootView;
+    private String pdfName = "myPdfFile.pdf";
 
     public SelfNoteFragment() {
         // Required empty public constructor
@@ -62,7 +70,7 @@ public class SelfNoteFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         // Inflate the layout for this fragment
-        View mRootView = inflater.inflate(R.layout.fragment_self_note, container, false);
+        mRootView = inflater.inflate(R.layout.fragment_self_note, container, false);
         mSubjectEditText = (EditText) mRootView.findViewById(R.id.edit_text_subject);
         mBodyEditText = (EditText) mRootView.findViewById(R.id.edit_text_body);
         mSaveButton = (Button) mRootView.findViewById(R.id.button_save);
@@ -82,7 +90,8 @@ public class SelfNoteFragment extends Fragment {
                     return;
                 }
 
-                try {
+                takeScreenshot();
+                /*try {
                     createPDF();
                 } catch (FileNotFoundException e) {
                     e.printStackTrace();
@@ -90,7 +99,7 @@ public class SelfNoteFragment extends Fragment {
                     e.printStackTrace();
                 } catch (IOException e) {
                     e.printStackTrace();
-                }
+                }*/
             }
         });
         return mRootView;
@@ -141,13 +150,23 @@ public class SelfNoteFragment extends Fragment {
     }
 
     public void emailNote(){
-        Intent email = new Intent(Intent.ACTION_SEND);
+        /*Intent email = new Intent(Intent.ACTION_SEND);
         email.putExtra(Intent.EXTRA_SUBJECT,mSubjectEditText.getText().toString());
         email.putExtra(Intent.EXTRA_TEXT, mBodyEditText.getText().toString());
         Uri uri = Uri.parse(myFile.getAbsolutePath());
         email.putExtra(Intent.EXTRA_STREAM, uri);
         email.setType("message/rfc822");
-        startActivity(email);
+        startActivity(email);*/
+        Intent email = new Intent(Intent.ACTION_SEND);
+        email.putExtra(Intent.EXTRA_EMAIL, "receiver_email_address");
+        email.putExtra(Intent.EXTRA_SUBJECT, "subject");
+        email.putExtra(Intent.EXTRA_TEXT, "email body");
+        //Uri uri = Uri.fromFile(new File(myFile,  pdfName));
+        Uri uri = Uri.parse(myFile.getAbsolutePath());
+        email.putExtra(Intent.EXTRA_STREAM, uri);
+        email.setType("application/pdf");
+        email.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        getActivity().startActivity(email);
     }
 
     private void promptForNextAction() {
@@ -173,6 +192,82 @@ public class SelfNoteFragment extends Fragment {
 
     }
 
+    public void takeScreenshot(){
+        //First Check if the external storage is writable
+        String state = Environment.getExternalStorageState();
+        if (!Environment.MEDIA_MOUNTED.equals(state)) {
+            Toast.makeText(getActivity(), "Media mounted", Toast.LENGTH_SHORT).show();
+        }
+
+        //Create a directory for your PDF
+        File pdfDir = new File(Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOCUMENTS), "MyApp");
+        if (!pdfDir.exists()){
+            pdfDir.mkdirs();
+        }
+
+
+        //Then take the screen shot
+        Bitmap screen; View v1 = mRootView.getRootView();
+        v1.setDrawingCacheEnabled(true);
+        screen = Bitmap.createBitmap(v1.getDrawingCache());
+        v1.setDrawingCacheEnabled(false);
+
+        //Now create the name of your PDF file that you will generate
+        myFile = new File(pdfDir, pdfName);
+
+        try {
+            Document  document = new Document();
+
+            PdfWriter.getInstance(document, new FileOutputStream(myFile));
+            document.open();
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            screen.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            byte[] byteArray = stream.toByteArray();
+            addImage(document,byteArray);
+            document.close();
+            promptForNextAction();
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    private static void addImage(Document document,byte[] byteArray) {
+        Image image = null;
+        try
+        {
+            image = Image.getInstance(byteArray);
+        }
+        catch (BadElementException e)
+        {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        catch (MalformedURLException e)
+        {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        catch (IOException e)
+        {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        // image.scaleAbsolute(150f, 150f);
+        try
+        {
+            document.add(image);
+        } catch (DocumentException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+    }
+
+
+    /**
+     * Permissions
+     */
     public void checkPermissions(){
         Log.d(LOG_TAG, "Version code: "+ Build.VERSION.SDK_INT);
         if (!checkPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE))
